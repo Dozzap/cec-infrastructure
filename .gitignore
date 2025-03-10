@@ -1,0 +1,9 @@
+test_key.pem
+W-DiSM_1st.pem
+.terraform/
+.terraform.lock.hcl
+.terraform.tfstate.lock.info
+.terraform.tfstate
+terraform.tfstate
+terraform.tfstate.backup
+test.txt
