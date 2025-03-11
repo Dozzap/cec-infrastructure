@@ -114,9 +114,6 @@ kubectl config view
 # sudo kubeadm reset
 # sudo kubeadm init --pod-network-cidr=10.244.0.0/16
 
-
-
-
 # this creates an nginx container node for testing
 kubectl create deployment nginx --image=nginx
 kubectl expose deployment nginx --port=80 --type=NodePort
