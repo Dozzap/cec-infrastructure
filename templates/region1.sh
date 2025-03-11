@@ -6,7 +6,6 @@ sudo yum install -y git
 cd /home/ssm-user
 
 # setup for workers
-
 # ensure that the master node is communicating to the worker node by editting /etc/hosts and inputting the ip address and your desired name for those ip addresses
 # sudo nano /etc/hosts
 
@@ -45,7 +44,7 @@ gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
 repo_gpgcheck=1
 EOF
 
-# Step 4: Install Kubernetes components
+#  Install Kubernetes components
 echo "Installing Kubernetes components..."
 sudo apt install -y kubelet=1.28-00 kubeadm=1.28-00 kubectl=1.28-00 --disableexcludes=kubernetes
 
