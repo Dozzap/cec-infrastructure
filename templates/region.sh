@@ -1,20 +1,20 @@
 #!/bin/bash
 
 # Master Node Setup Script for Kubernetes
-# Step 1: Update the system
+#  Update the system
 
 
 
 echo "Updating the system..."
 sudo yum update -y
 
-# Step 2: Install Docker
+#  Install Docker
 echo "Installing Docker..."
 sudo yum install -y docker
 sudo systemctl enable docker --now
 sudo usermod -a -G docker ec2-user
 
-# Step 3: Add Kubernetes repository
+#  Add Kubernetes repository
 echo "Adding Kubernetes repository..."
 sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF
 [kubernetes]
@@ -26,14 +26,14 @@ gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
 repo_gpgcheck=1
 EOF
 
-# Step 4: Install Kubernetes components
+#  Install Kubernetes components
 echo "Installing Kubernetes components..."
 sudo apt install -y kubelet=1.28-00 kubeadm=1.28-00 kubectl=1.28-00 --disableexcludes=kubernetes
 
 # this makes sure that current and future applications will be using the same version 
 sudo apt-mark hold kubelet kubeadm kubectl
 
-# Step 5: Enable and start kubelet
+#  Enable and start kubelet
 echo "Enabling and starting kubelet..."
 sudo systemctl enable --now kubelet
 
@@ -79,11 +79,11 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 export KUBECONFIG=$HOME/.kube/config
 
-# Step 8: Verify kubectl configuration
+#  Verify kubectl configuration
 echo "Verifying kubectl configuration..."
 kubectl config view
 
-# Step 9: Install Calico pod network
+#  Install Calico pod network
 # this is a network plugin that ensures that the clusters pods can communicate efficiently
 # another network plugin components can be used as wanted
 echo "Installing Calico pod network..."
@@ -93,7 +93,7 @@ kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/
 # this command will generate the whole command that you need to paste to your worker 
 kubeadm token create --print-join-command
 
-# Step 10: Verify Kubernetes setup
+#  Verify Kubernetes setup
 echo "Verifying Kubernetes setup..."
 kubectl get nodes
 kubectl get pods --all-namespaces
