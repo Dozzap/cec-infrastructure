@@ -1,54 +1,52 @@
 #!/bin/bash
 # Cloud Master Node Setup
 
-# Step 1: Update system
+echo "Setting up Cloud Master Node..."
+
+# Step 1: Update the system
 sudo yum update -y
 
-# Step 2: Install Docker
-sudo yum install -y docker
+# Step 2: Install Docker and Kubernetes
+sudo yum install -y docker kubelet kubeadm kubectl
+
+# Step 3: Enable and start Docker and Kubernetes services
 sudo systemctl enable docker --now
-sudo usermod -aG docker ec2-user
+sudo systemctl enable kubelet --now
 
-# Step 3: Add Kubernetes Repository
-sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF
-[kubernetes]
-name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
-enabled=1
-gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
-repo_gpgcheck=1
-EOF
-
-# Step 4: Install Kubernetes
-sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
-sudo systemctl enable --now kubelet
-
-# Step 5: Initialize Kubernetes Cluster
+# Step 4: Initialize Kubernetes Master Node
 sudo kubeadm init --pod-network-cidr=10.244.0.0/16
 
-# Step 6: Configure kubectl
+# Step 5: Set up kubectl config for user
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
-export KUBECONFIG=$HOME/.kube/config
 
-# Step 7: Install Calico Network Plugin
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml
+# Step 6: Install Calico network plugin (for pod networking)
+kubectl apply -f https://docs.projectcalico.org/v3.26/manifests/calico.yaml
 
-# Step 8: Deploy Services in Kubernetes
-kubectl create deployment conversion --image=dozzap/workflow_published-conversion
-kubectl expose deployment conversion --port=5000 --type=ClusterIP
+# Step 7: Setup Docker Compose for microservices orchestration
+echo "Setting up Docker Compose for Cloud Master"
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 
-kubectl create deployment profanity --image=dozzap/workflow_published-profanity
-kubectl expose deployment profanity --port=5000 --type=ClusterIP
+# Step 8: Create Docker Compose file for Cloud services
+cat <<EOF > /home/ec2-user/docker-compose.yml
+version: "3.8"
+services:
+  compression:
+    image: dozzap/workflow_published-compression:latest
+    ports:
+      - "5005:5000"
+  
+  censor:
+    image: dozzap/workflow_published-censor:latest
+    ports:
+      - "5004:5000"
+EOF
 
-kubectl create deployment censor --image=dozzap/workflow_published-censor
-kubectl expose deployment censor --port=5000 --type=ClusterIP
+# Step 9: Run Docker Compose to start services
+cd /home/ec2-user
+sudo docker-compose up -d
 
-kubectl create deployment compression --image=dozzap/workflow_published-compression
-kubectl expose deployment compression --port=5000 --type=ClusterIP
-
-# Step 9: Display Service Information
-kubectl get svc
-kubectl get pods
+# Cloud Master setup is complete
+echo "Cloud Master Node setup complete!"
