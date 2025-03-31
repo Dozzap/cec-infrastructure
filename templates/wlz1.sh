@@ -1,33 +1,44 @@
 #!/bin/bash
+# Wavelength Worker Node Setup
+
+echo "Setting up Wavelength Worker Node..."
+
+# Step 1: Update the system
 sudo yum update -y
-sudo yum install -y git
-cd /home/ssm-user
 
-# Download Docker Compose
-sudo yum install docker containerd screen -y
-# sleep 1
-# wget https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)
-sleep 1
-sudo mv docker-compose-$(uname -s)-$(uname -m) /usr/libexec/docker/cli-plugins/docker-compose
-sleep 1
-chmod +x /usr/libexec/docker/cli-plugins/docker-compose
-sleep 5
-systemctl enable docker.service --now
-sudo usermod -a -G docker ec2-user
-sudo usermod -a -G docker ssm-user
+# Step 2: Install Docker and Kubernetes
+sudo yum install -y docker kubelet kubeadm kubectl
 
+# Step 3: Enable and start Docker and Kubernetes services
+sudo systemctl enable docker --now
+sudo systemctl enable kubelet --now
 
-sudo mkdir -p /mosquitto/config
-sudo mkdir -p /mosquitto/data
-sudo mkdir -p /mosquitto/log
+# Step 4: Join the Wavelength Worker Node to the Kubernetes Master Node (replace <JOIN_COMMAND>)
+sudo kubeadm join <JOIN_COMMAND>
 
-sudo bash -c 'cat > /mosquitto/config/mosquitto.conf <<EOF
-persistence true
-persistence_location /mosquitto/data/
-log_dest file /mosquitto/log/mosquitto.log
-allow_anonymous true
-listener 1883
-EOF'
+# Step 5: Install Docker Compose for service orchestration
+echo "Setting up Docker Compose for Wavelength Worker"
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 
+# Step 6: Create Docker Compose file for Wavelength Worker services
+cat <<EOF > /home/ec2-user/docker-compose.yml
+version: "3.8"
+services:
+  conversion:
+    image: dozzap/workflow_published-conversion:latest
+    ports:
+      - "5002:5000"
+  
+  profanity:
+    image: dozzap/workflow_published-profanity:latest
+    ports:
+      - "5003:5000"
+EOF
 
-docker run -d -p 1883:1883 -p 9001:9001 -v /mosquitto:/mosquitto eclipse-mosquitto
+# Step 7: Run Docker Compose to start services
+cd /home/ec2-user
+sudo docker-compose up -d
+
+# Wavelength Worker setup is complete
+echo "Wavelength Worker Node setup complete!"

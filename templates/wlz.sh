@@ -1,51 +1,52 @@
-# #!/bin/bash
-# sudo yum update -y
-# sudo yum install -y git
-# cd /home/ssm-user
+#!/bin/bash
+# Wavelength Master Node Setup
 
-# # Download Docker Compose
-# sudo yum install docker containerd screen -y
-# # sleep 1
-# # wget https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)
-# sleep 1
-# sudo mv docker-compose-$(uname -s)-$(uname -m) /usr/libexec/docker/cli-plugins/docker-compose
-# sleep 1
-# chmod +x /usr/libexec/docker/cli-plugins/docker-compose
-# sleep 5
-# systemctl enable docker.service --now
-# sudo usermod -a -G docker ec2-user
-# sudo usermod -a -G docker ssm-user
+echo "Setting up Wavelength Master Node..."
 
+# Step 1: Update the system
+sudo yum update -y
 
-# sudo mkdir -p /mosquitto/config
-# sudo mkdir -p /mosquitto/data
-# sudo mkdir -p /mosquitto/log
+# Step 2: Install Docker and Kubernetes
+sudo yum install -y docker kubelet kubeadm kubectl
 
-# sudo bash -c 'cat > /mosquitto/config/mosquitto.conf <<EOF
-# persistence true
-# persistence_location /mosquitto/data/
-# log_dest file /mosquitto/log/mosquitto.log
-# allow_anonymous true
-# listener 1883
-# EOF'
+# Step 3: Enable and start Docker and Kubernetes services
+sudo systemctl enable docker --now
+sudo systemctl enable kubelet --now
 
-# docker run -d -p 1883:1883 -p 9001:9001 -v /mosquitto:/mosquitto eclipse-mosquitto
+# Step 4: Initialize Kubernetes Master Node for Wavelength
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16
 
+# Step 5: Set up kubectl config for user
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-# docker pull nats
+# Step 6: Install Calico network plugin (for pod networking)
+kubectl apply -f https://docs.projectcalico.org/v3.26/manifests/calico.yaml
 
-# docker network create nats
+# Step 7: Setup Docker Compose for microservices orchestration
+echo "Setting up Docker Compose for Wavelength Master"
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 
-# docker run -d --name nats --network nats --rm -p 4222:4222 -p 8222:8222 nats --http_port 8222
+# Step 8: Create Docker Compose file for Wavelength services
+cat <<EOF > /home/ec2-user/docker-compose.yml
+version: "3.8"
+services:
+  conversion:
+    image: dozzap/workflow_published-conversion:latest
+    ports:
+      - "5002:5000"
+  
+  profanity:
+    image: dozzap/workflow_published-profanity:latest
+    ports:
+      - "5003:5000"
+EOF
 
+# Step 9: Run Docker Compose to start services
+cd /home/ec2-user
+sudo docker-compose up -d
 
-
-# # docker run --init --net=host -p 7447:7447/tcp -p 8050:8000/tcp -e ZENOHD_LISTEN='tcp/0.0.0.0:7447' --name zenoh-server eclipse/zenoh
-
-# # # Build Function
-# # cd eco_provider_performance2/functions/first
-# # docker compose up --build
-
-
-
-# #
+# Wavelength Master setup is complete
+echo "Wavelength Master Node setup complete!"
