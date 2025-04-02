@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conversion
+  namespace: wavelength
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: conversion
+  template:
+    metadata:
+      labels:
+        app: conversion
+    spec:
+      nodeSelector:
+        layer: wavelength
+      containers:
+      - name: conversion
+        image: dozzap/workflow_published-conversion:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: NEXT_HOP
+          valueFrom:
+            configMapKeyRef:
+              name: cross-layer-config
+              key: cloud_api_addr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: conversion-service
+  namespace: wavelength
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 5002
+    targetPort: 5000
+    name: http
+  selector:
+    app: conversion

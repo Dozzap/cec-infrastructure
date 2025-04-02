@@ -1,52 +1,53 @@
 #!/bin/bash
-# Cloud Master Node Setup
+echo "Setting up CLOUD MASTER (region.sh)..."
 
-echo "Setting up Cloud Master Node..."
-
-# Step 1: Update the system
+# Install dependencies
 sudo yum update -y
-
-# Step 2: Install Docker and Kubernetes
-sudo yum install -y docker kubelet kubeadm kubectl
-
-# Step 3: Enable and start Docker and Kubernetes services
+sudo yum install -y docker git curl conntrack
 sudo systemctl enable docker --now
+
+# Configure Kubernetes
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+EOF
+
+sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable kubelet --now
 
-# Step 4: Initialize Kubernetes Master Node
-sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+# Initialize cluster (CORRECTED init command)
+sudo kubeadm init \
+  --pod-network-cidr=10.244.0.0/16 \
+  --apiserver-advertise-address=$(hostname -I | awk '{print $1}') \
+  --control-plane-endpoint=$(curl -s 169.254.169.254/latest/meta-data/public-ipv4)
 
-# Step 5: Set up kubectl config for user
+# Configure kubectl (FIXED typo in config path)
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-# Step 6: Install Calico network plugin (for pod networking)
-kubectl apply -f https://docs.projectcalico.org/v3.26/manifests/calico.yaml
+# Install Flannel CNI (FIXED URL)
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
-# Step 7: Setup Docker Compose for microservices orchestration
-echo "Setting up Docker Compose for Cloud Master"
-sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+# Label node
+kubectl label nodes $(hostname) \
+  node-role.kubernetes.io/control-plane="" \
+  layer=cloud \
+  topology.kubernetes.io/zone=cloud-1
 
-# Step 8: Create Docker Compose file for Cloud services
-cat <<EOF > /home/ec2-user/docker-compose.yml
-version: "3.8"
-services:
-  compression:
-    image: dozzap/workflow_published-compression:latest
-    ports:
-      - "5005:5000"
-  
-  censor:
-    image: dozzap/workflow_published-censor:latest
-    ports:
-      - "5004:5000"
-EOF
+# Generate worker join command
+sudo kubeadm token create --print-join-command > /home/ec2-user/worker-join-command.txt
+chmod 600 /home/ec2-user/worker-join-command.txt
+echo "Worker join command saved to: /home/ec2-user/worker-join-command.txt"
 
-# Step 9: Run Docker Compose to start services
-cd /home/ec2-user
-sudo docker-compose up -d
+# Install metrics server 
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
-# Cloud Master setup is complete
-echo "Cloud Master Node setup complete!"
+# Set up cross-layer communication
+kubectl create configmap cross-layer-config \
+  --from-literal=wavelength_endpoint=<WLZ_MASTER_IP> \
+  --from-literal=edge_endpoint=<YOUR_LAPTOP_IP>

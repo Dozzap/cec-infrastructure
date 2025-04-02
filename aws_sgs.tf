@@ -110,6 +110,21 @@ resource "aws_security_group" "instance_sg" {
     description = "Allow outbound traffic"
   }
   
+ # wavelength-master-sg.tf
+resource "aws_security_group" "wlz_master" {
+  ingress {
+    from_port   = 6443
+    to_port     = 6443
+    protocol    = "tcp"
+    security_groups = [aws_security_group.wlz_worker.id]
+  }
+  ingress {
+    from_port   = 5000-5005
+    to_port     = 5000-5005
+    protocol    = "tcp"
+    cidr_blocks = ["<YOUR_LAPTOP_IP>/32"]
+  }
+} 
 
   tags = {
     Name = "instance_sg"
