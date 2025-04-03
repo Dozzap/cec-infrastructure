@@ -19,6 +19,13 @@ EOF
 sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable kubelet --now
 
+echo "Configuring kubectl..."
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+export KUBECONFIG=$HOME/.kube/config
+
+
 # Initialize cluster (CORRECTED init command)
 sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \

@@ -20,6 +20,45 @@ spec:
         image: dozzap/workflow_published-censor:latest
         ports:
         - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.wavelength"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/profanity/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/censor/out"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compression
+  namespace: cloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: compression
+  template:
+    metadata:
+      labels:
+        app: compression
+    spec:
+      nodeSelector:
+        layer: cloud
+      containers:
+      - name: compression
+        image: dozzap/workflow_published-compression:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.wavelength"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/censor/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/compression/out"
+
 ---
 apiVersion: v1
 kind: Service
@@ -31,4 +70,19 @@ spec:
   ports:
   - port: 5004
     targetPort: 5000
-    name: http
+  selector:
+    app: censor
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compression-service
+  namespace: cloud
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 5005
+    targetPort: 5000
+  selector:
+    app: compression

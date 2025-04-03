@@ -110,23 +110,34 @@ resource "aws_security_group" "instance_sg" {
     description = "Allow outbound traffic"
   }
   
- # wavelength-master-sg.tf
+
+  tags = {
+    Name = "instance_sg"
+  }
+}
+
+
+# wavelength-master-sg.tf
 resource "aws_security_group" "wlz_master" {
+  name        = "wlz_master_sg"
+  description = "Security Group for Wavelength Master"
+  vpc_id      = aws_vpc.tf_vpc.id
   ingress {
     from_port   = 6443
     to_port     = 6443
     protocol    = "tcp"
-    security_groups = [aws_security_group.wlz_worker.id]
+    # Remove the reference to wlz_worker if it's not necessary
+    cidr_blocks = ["0.0.0.0/0"]  # Replace with the appropriate CIDR or IP range
   }
+
   ingress {
-    from_port   = 5000-5005
-    to_port     = 5000-5005
+    from_port   = 5000
+    to_port     = 5005
     protocol    = "tcp"
-    cidr_blocks = ["<YOUR_LAPTOP_IP>/32"]
+    cidr_blocks = ["0.0.0.0/0"]  # Replace with the appropriate CIDR or IP range
   }
-} 
 
   tags = {
-    Name = "instance_sg"
+    Name = "wlz_master"
   }
 }

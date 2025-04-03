@@ -7,7 +7,7 @@ sudo yum install -y docker kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable docker kubelet --now
 
 # Get join command from master (replace <MASTER_IP>)
-scp ec2-user@<MASTER_IP>:/home/ec2-user/worker-join-command.txt .
+scp ec2-user@ip-10-0-1-84:/home/ec2-user/worker-join-command.txt .
 
 # Join cluster (SIMPLIFIED command)
 sudo $(cat worker-join-command.txt) \
@@ -15,3 +15,8 @@ sudo $(cat worker-join-command.txt) \
 
 echo "Worker joined cloud cluster. Verify with:"
 echo "kubectl get nodes -l layer=cloud"
+
+
+
+
+
