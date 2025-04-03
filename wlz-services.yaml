@@ -4,6 +4,7 @@ metadata:
   name: mosquitto-service
   namespace: wavelength
 spec:
+  type: LoadBalancer # or NodePort
   selector:
     app: mosquitto
   ports:
