@@ -1,22 +1,30 @@
 #!/bin/bash
 echo "Setting up CLOUD WORKER (region1.sh)..."
 
-# Install dependencies
-# sudo yum update -y
-sudo yum install -y kubelet-1.28.0 kubeadm-1.28.0 kubectl-1.28.0 --disableexcludes=kubernetes
-sudo systemctl enable docker kubelet --now
+# 1. Install dependencies
+sudo yum update -y
+sudo yum install -y docker git curl conntrack iproute-tc
+sudo systemctl enable docker --now
 sudo swapoff -a
 
+# 2. Configure Kubernetes repo
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=0
+EOF
 
-# Join cluster (SIMPLIFIED command)
-kubeadm join 10.0.1.101:6443 --token l59vnt.5iw155qxddryklqb \
-        --discovery-token-ca-cert-hash sha256:8a80a29ddea3375082e658a0ed5f00a5914f69ef84797b368ca7d6c1b976b96f \
-  --node-labels="layer=cloud,topology.kubernetes.io/zone=cloud-1"
+# 3. Install Kubernetes components
+sudo yum install -y kubelet-1.28.0 kubeadm-1.28.0 kubectl-1.28.0
+sudo systemctl enable kubelet --now
 
-echo "Worker joined cloud cluster. Verify with:"
-echo "kubectl get nodes -l layer=cloud"
+# 4. Join the cluster (update this with your actual join command)
+echo "Joining Kubernetes cluster..."
+sudo kubeadm join 10.0.1.189:6443 --token musb48.aiwe6oi9t1vrk72j \
+  --discovery-token-ca-cert-hash sha256:2b488f9a6acdf10d643a1a94669a8d690759f8d615476301cdaba6ef76b7243a
 
-
-
+echo "Cloud Worker joined successfully."
 
 
