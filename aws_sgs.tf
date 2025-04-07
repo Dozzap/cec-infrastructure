@@ -99,7 +99,7 @@ resource "aws_security_group" "instance_sg" {
     to_port     = 22
     protocol    = "tcp"
     description = "Allow SSH access"
-    cidr_blocks = ["0.0.0.0/0"] # Replace with your IP or bastion host IP
+    cidr_blocks = ["0.0.0.0/0"] 
   }
 
   egress {
@@ -126,8 +126,8 @@ resource "aws_security_group" "wlz_master" {
     from_port   = 6443
     to_port     = 6443
     protocol    = "tcp"
-    # Remove the reference to wlz_worker if it's not necessary
-    cidr_blocks = ["0.0.0.0/0"]  # Replace with the appropriate CIDR or IP range
+
+    cidr_blocks = ["0.0.0.0/0"] 
   }
 
   ingress {

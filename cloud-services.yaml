@@ -86,3 +86,18 @@ spec:
     targetPort: 5000
   selector:
     app: compression
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-lb
+  namespace: wavelength
+spec:
+  type: LoadBalancer
+  selector:
+    app: mosquitto
+  ports:
+    - protocol: TCP
+      port: 1883
+      targetPort: 1883
