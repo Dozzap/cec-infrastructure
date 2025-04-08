@@ -22,8 +22,7 @@ sudo systemctl enable kubelet --now
 
 # 4. Join the cluster (update this with your actual join command)
 echo "Joining Kubernetes cluster..."
-sudo kubeadm join 10.0.1.189:6443 --token musb48.aiwe6oi9t1vrk72j \
-  --discovery-token-ca-cert-hash sha256:2b488f9a6acdf10d643a1a94669a8d690759f8d615476301cdaba6ef76b7243a
+kubeadm 
 
 echo "Cloud Worker joined successfully."
 

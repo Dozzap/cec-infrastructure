@@ -1,0 +1,225 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  namespace: cloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto
+  template:
+    metadata:
+      labels:
+        app: mosquitto
+    spec:
+      containers:
+      - name: mosquitto
+        image: eclipse-mosquitto:latest
+        ports:
+        - containerPort: 1883
+        volumeMounts:
+        - name: config-volume
+          mountPath: /mosquitto/config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: mosquitto-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-config
+  namespace: cloud
+data:
+  mosquitto.conf: |
+    listener 1883
+    allow_anonymous true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-service
+  namespace: cloud
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 1883
+      targetPort: 1883
+      nodePort: 31883  
+  selector:
+    app: mosquitto
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conversion
+  namespace: cloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: conversion
+  template:
+    metadata:
+      labels:
+        app: conversion
+    spec:
+      nodeSelector:
+        layer: cloud
+      containers:
+      - name: conversion
+        image: dozzap/workflow_published-conversion:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.cloud"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/tts/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/conversion/out"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: conversion-service
+  namespace: cloud
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5002
+      targetPort: 5000
+  selector:
+    app: conversion
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: profanity
+  namespace: cloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: profanity
+  template:
+    metadata:
+      labels:
+        app: profanity
+    spec:
+      nodeSelector:
+        layer: cloud
+      containers:
+      - name: profanity
+        image: dozzap/workflow_published-profanity:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.cloud"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/conversion/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/profanity/out"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: profanity-service
+  namespace: cloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 5003
+      targetPort: 5000
+  selector:
+    app: profanity
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: censor
+  namespace: cloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: censor
+  template:
+    metadata:
+      labels:
+        app: censor
+    spec:
+      nodeSelector:
+        layer: cloud
+      containers:
+      - name: censor
+        image: dozzap/workflow_published-censor:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.cloud"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/profanity/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/censor/out"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: censor-service
+  namespace: cloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 5004
+      targetPort: 5000
+  selector:
+    app: censor
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compression
+  namespace: cloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: compression
+  template:
+    metadata:
+      labels:
+        app: compression
+    spec:
+      nodeSelector:
+        layer: cloud
+      containers:
+      - name: compression
+        image: dozzap/workflow_published-compression:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.cloud"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/censor/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/final/edge"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compression-service
+  namespace: cloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 5005
+      targetPort: 5000
+  selector:
+    app: compression

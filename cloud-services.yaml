@@ -92,7 +92,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mosquitto-lb
-  namespace: wavelength
+  namespace: cloud
 spec:
   type: LoadBalancer
   selector:

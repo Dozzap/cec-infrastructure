@@ -1,0 +1,10 @@
+version: "3.8"
+services:
+  text2speech:
+    image: dozzap/workflow_published-text2speech:latest
+    ports:
+      - "5001:5000"  # Maps host port 5001 to container port 5000
+    environment:
+      - MQTT_BROKER=your-wavelength-mqtt-broker-ip
+      - MQTT_PORT=1883
+      - MQTT_TOPIC=pipeline/tts/out

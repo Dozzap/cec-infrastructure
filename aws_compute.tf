@@ -165,19 +165,18 @@ resource "aws_launch_template" "region_launch_template" {
 
 # Create one ASG for each region subnet
 resource "aws_instance" "region_workers" {
-  count = 1
-  subnet_id = aws_subnet.region_subnets["az1"].id
-  user_data = "${element(["${filebase64("templates/region1.sh")}"], count.index)}"
+  count = 2
+
+  subnet_id                   = aws_subnet.region_subnets["az1"].id
+  user_data = "${count.index == 0 ? filebase64("templates/region.sh") : filebase64("templates/region1.sh")}"
   associate_public_ip_address = true
-  security_groups = [aws_security_group.instance_sg.id]
-  #launch_template {
-  #  id      = aws_launch_template.region_launch_template.id
-  #  version = "$Latest"
-  #}
+  security_groups             = [aws_security_group.instance_sg.id]
+  
   launch_template {
-    id      = count.index == 2 ? aws_launch_template.region_ubuntu_launch_template.id : aws_launch_template.region_launch_template.id
+    id      = aws_launch_template.region_launch_template.id
     version = "$Latest"
   }
+  
   tags = {
     Name = "ECO-REGION-INSTANCE-${count.index}"
   }

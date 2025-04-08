@@ -1,53 +1,66 @@
-import paho.mqtt.client as mqtt
-import requests
+import os
+import uuid
+import logging
 import json
+import requests
+import paho.mqtt.client as mqtt
 
-# MQTT configuration
-MQTT_BROKER = "207.61.169.156"  # Wavelength MQTT broker
-MQTT_PORT = 32157
-MQTT_TOPIC = "pipeline/tts/out"
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Local TTS service endpoint
+# MQTT configuration (update these as needed)
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "3.96.200.35")  # Cloud MQTT broker public IP
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "31883"))
+MQTT_TOPIC = os.environ.get("MQTT_TOPIC", "pipeline/tts/out")
+
+# TTS Service endpoint (this is the local endpoint of your text2speech container)
 SERVICE_ENDPOINTS = {
-    "text2speech": "http://127.0.0.1:5001/process",
+    "text2speech": os.environ.get("TTS_SERVICE_ENDPOINT", "http://127.0.0.1:5001/process")
 }
 
 def on_connect(client, userdata, flags, rc):
-    print(f"✅ Connected to MQTT Broker with result code {rc}")
-
-    # Start the workflow once connected
-    message = "This is a damn mess..."
-    run_workflow(client, message)
+    if rc == 0:
+        logging.info("🟢 Connected to MQTT Broker successfully.")
+        # Start the workflow once connected
+        message = "This is a damn mess..."
+        run_workflow(client, message)
+    else:
+        logging.error(f"❌ Connection failed with code {rc}")
 
 def on_publish(client, userdata, mid):
-    print(f"📤 Message published with ID: {mid}")
-    client.disconnect()  # Optional: disconnect after publishing
+    logging.info(f"✅ Message published with ID: {mid}")
+    # Optionally disconnect after publishing to end the workflow
+    client.disconnect()
 
 def run_workflow(client, message):
     try:
-        print("🎤 Starting Text-to-Speech...")
-
+        logging.info("🚀 Starting Text-to-Speech process...")
+        # Send POST request to the text-to-speech service with the message as JSON data
         tts_resp = requests.post(SERVICE_ENDPOINTS["text2speech"],
-                                 json={"message": message}, timeout=30)
+                                 json={"message": message},
+                                 timeout=30)
         tts_resp.raise_for_status()
-
+        
         tts_audio = tts_resp.content
-        print("✅ TTS processing complete. Publishing...")
-
-        # Publish the audio result
+        logging.info("🎧 TTS processing complete. Publishing audio to MQTT...")
+        
+        # Publish the audio result over MQTT
         client.publish(MQTT_TOPIC, payload=tts_audio, qos=0, retain=False)
-
+    except requests.HTTPError as http_err:
+        logging.error(f"HTTP error occurred: {http_err}")
     except Exception as e:
-        print(f"❌ Workflow failed: {e}")
-        print(f"Debug: TTS response status = {tts_resp.status_code if 'tts_resp' in locals() else 'N/A'}")
+        logging.error(f"Unexpected error in workflow: {e}")
 
 if __name__ == "__main__":
-    # ✅ You were missing this line
     client = mqtt.Client(protocol=mqtt.MQTTv311)
-
     client.on_connect = on_connect
     client.on_publish = on_publish
 
-    print("🚀 Connecting to MQTT broker...")
-    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    logging.info("📡 Connecting to MQTT Broker...")
+    try:
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    except Exception as e:
+        logging.error(f"Failed to connect to MQTT Broker: {e}")
+        exit(1)
+
     client.loop_forever()

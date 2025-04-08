@@ -1,10 +1,9 @@
 #!/bin/bash
-
-echo "Setting up Wavelength MASTER (Control Plane)"
+echo "Setting up Wavelength MASTER (Control Plane)..."
 
 # 1. Install dependencies
 sudo yum update -y
-sudo yum install -y docker git curl conntrack telnet
+sudo yum install -y docker git curl conntrack telnet aws-cli
 sudo systemctl enable docker --now
 
 # 2. Configure Kubernetes repository
@@ -43,9 +42,14 @@ kubectl label nodes $(hostname) \
   topology.kubernetes.io/zone=wlz-1 \
   carrier.wavelength.aws/optimized=true
 
-# 8. Generate worker join command
-sudo kubeadm token create --print-join-command > /home/ec2-user/wavelength-worker-join.sh
+# 8. Generate worker join command and store it
+JOIN_CMD=$(sudo kubeadm token create --print-join-command)
+echo "$JOIN_CMD" > /home/ec2-user/wavelength-worker-join.sh
 chmod +x /home/ec2-user/wavelength-worker-join.sh
+echo "Wavelength Worker join command saved to: /home/ec2-user/wavelength-worker-join.sh"
+
+# Store the join command in SSM Parameter Store
+aws ssm put-parameter --name "k8s-wavelength-join-command" --value "$JOIN_CMD" --type "SecureString" --overwrite
 
 # 9. Install Metrics Server
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
