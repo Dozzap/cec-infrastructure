@@ -51,5 +51,12 @@ echo "Wavelength Worker join command saved to: /home/ec2-user/wavelength-worker-
 # Store the join command in SSM Parameter Store
 aws ssm put-parameter --name "k8s-wavelength-join-command" --value "$JOIN_CMD" --type "SecureString" --overwrite
 
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring-cloud \
+  --create-namespace \
+  --set grafana.service.type=NodePort \
+  --set prometheus.service.type=NodePort
+
+
 # 9. Install Metrics Server
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
