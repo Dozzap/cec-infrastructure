@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "Setting up Wavelength MASTER (Control Plane)..."
 
-# 1. Install dependencies
+# 1. Update packages and install dependencies
 sudo yum update -y
 sudo yum install -y docker git curl conntrack telnet aws-cli
 sudo systemctl enable docker --now
@@ -20,43 +20,195 @@ EOF
 sudo yum install -y kubelet-1.28.0 kubeadm-1.28.0 kubectl-1.28.0 --disableexcludes=kubernetes
 sudo systemctl enable kubelet --now
 
-# 4. Initialize Kubernetes cluster
+# 4. Initialize Kubernetes cluster (Wavelength Master)
+MASTER_IP=$(hostname -I | awk '{print $1}')
+CONTROL_PLANE_ENDPOINT=$(curl -s 169.254.169.254/latest/meta-data/public-ipv4)
 sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \
-  --apiserver-advertise-address=$(hostname -I | awk '{print $1}') \
-  --control-plane-endpoint=$(curl -s 169.254.169.254/latest/meta-data/public-ipv4)
+  --apiserver-advertise-address="$MASTER_IP" \
+  --control-plane-endpoint="$CONTROL_PLANE_ENDPOINT"
 
-# 5. Configure kubectl for current user
+# 5. Configure kubectl for ec2-user
 echo "Configuring kubectl..."
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-# 6. Install Flannel CNI (optimized for Wavelength)
+# 6. Install Flannel CNI (for wavelength)
 kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
-# 7. Label master node
-kubectl label nodes $(hostname) \
-  node-role.kubernetes.io/control-plane="" \
-  layer=wavelength \
-  topology.kubernetes.io/zone=wlz-1 \
-  carrier.wavelength.aws/optimized=true
+# 7. Label the master node for wavelength
+kubectl label nodes "$(hostname)" node-role.kubernetes.io/control-plane="" layer=wavelength topology.kubernetes.io/zone=wlz-1 carrier.wavelength.aws/optimized=true
 
-# 8. Generate worker join command and store it
+# 8. Generate the worker join command for wavelength and save it
 JOIN_CMD=$(sudo kubeadm token create --print-join-command)
 echo "$JOIN_CMD" > /home/ec2-user/wavelength-worker-join.sh
 chmod +x /home/ec2-user/wavelength-worker-join.sh
-echo "Wavelength Worker join command saved to: /home/ec2-user/wavelength-worker-join.sh"
+echo "Wavelength Worker join command saved to /home/ec2-user/wavelength-worker-join.sh"
 
-# Store the join command in SSM Parameter Store
-aws ssm put-parameter --name "k8s-wavelength-join-command" --value "$JOIN_CMD" --type "SecureString" --overwrite
+# 9. Install Metrics Server
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
-helm install monitoring prometheus-community/kube-prometheus-stack \
+# 10. (Optional) Install Monitoring with Helm
+helm install monitoring prometheus prometheus-community/kube-prometheus-stack \
   --namespace monitoring-cloud \
   --create-namespace \
   --set grafana.service.type=NodePort \
   --set prometheus.service.type=NodePort
 
+# 11. Create the namespace and write YAML manifests
+kubectl create namespace wavelength || true
 
-# 9. Install Metrics Server
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+cat << EOF > /home/ec2-user/wlz-services.yaml
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-service
+  namespace: wavelength
+spec:
+  type: NodePort
+  selector:
+    app: mosquitto
+  ports:
+    - protocol: TCP
+      port: 1883
+      targetPort: 1883
+      nodePort: 31883
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  namespace: wavelength
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto
+  template:
+    metadata:
+      labels:
+        app: mosquitto
+    spec:
+      containers:
+      - name: mosquitto
+        image: eclipse-mosquitto:latest
+        ports:
+        - containerPort: 1883
+          hostPort: 1883  # Ensure external accessibility on the node
+        volumeMounts:
+        - name: config-volume
+          mountPath: /mosquitto/config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: mosquitto-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-config
+  namespace: wavelength
+data:
+  mosquitto.conf: |
+    listener 1883
+    allow_anonymous true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conversion
+  namespace: wavelength
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: conversion
+  template:
+    metadata:
+      labels:
+        app: conversion
+    spec:
+      nodeSelector:
+        layer: wavelength
+      containers:
+      - name: conversion
+        image: dozzap/workflow_published-conversion:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.wavelength"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/tts/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/conversion/out"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: conversion-service
+  namespace: wavelength
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5002
+      targetPort: 5000
+  selector:
+    app: conversion
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: profanity
+  namespace: wavelength
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: profanity
+  template:
+    metadata:
+      labels:
+        app: profanity
+    spec:
+      nodeSelector:
+        layer: wavelength
+      containers:
+      - name: profanity
+        image: dozzap/workflow_published-profanity:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MQTT_BROKER
+          value: "mosquitto-service.wavelength"
+        - name: MQTT_TOPIC_SUB
+          value: "pipeline/conversion/out"
+        - name: MQTT_TOPIC_PUB
+          value: "pipeline/profanity/out"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: profanity-service
+  namespace: wavelength
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5003
+      targetPort: 5000
+  selector:
+    app: profanity
+EOF
+
+
+
+kubectl apply -f /home/ec2-user/wlz-services.yaml
+
+
+
+echo "Wavelength MASTER setup complete!"
+echo "$JOIN_CMD"

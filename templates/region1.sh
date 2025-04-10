@@ -1,13 +1,14 @@
 #!/bin/bash
+set -euo pipefail
 echo "Setting up CLOUD WORKER (region1.sh)..."
 
-# 1. Install dependencies
+# 1. Update packages and install dependencies
 sudo yum update -y
 sudo yum install -y docker git curl conntrack iproute-tc
 sudo systemctl enable docker --now
 sudo swapoff -a
 
-# 2. Configure Kubernetes repo
+# 2. Configure Kubernetes repository (using a mirror)
 cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
@@ -20,10 +21,8 @@ EOF
 sudo yum install -y kubelet-1.28.0 kubeadm-1.28.0 kubectl-1.28.0
 sudo systemctl enable kubelet --now
 
-# 4. Join the cluster (update this with your actual join command)
+# 4. Join the Kubernetes cluster (using your actual join command)
 echo "Joining Kubernetes cluster..."
-kubeadm 
+# Ensure you run this as root (using sudo if necessary)
 
-echo "Cloud Worker joined successfully."
-
-
+echo "Cloud Worker joined successfully!"

@@ -1,0 +1,9 @@
+services:
+  text2speech:
+    image: dozzap/workflow_published-text2speech:latest
+    ports:
+      - "5001:5000"
+    environment:
+      - MQTT_BROKER=207.61.171.152
+      - MQTT_PORT=31883
+      - MQTT_TOPIC=pipeline/tts/out

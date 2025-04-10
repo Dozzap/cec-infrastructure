@@ -1,13 +1,20 @@
 import paho.mqtt.client as mqtt
 import uuid
 
-MQTT_BROKER = "3.96.200.35"  # Cloud MQTT broker public IP
+# Use the externally accessible IP of your Cloud MQTT broker.
+# Ensure this matches what your Cloud MQTT Broker is exposing.
+MQTT_BROKER = "207.61.171.152"
 MQTT_PORT = 31883
-TOPIC = "pipeline/final/out"  
+# TOPIC = "pipeline/final/out"  # This topic should match the final output topic from your Cloud workflow
+
+TOPIC = "pipeline/compression/out"
 
 def on_connect(client, userdata, flags, rc):
-    print("🟢 Edge connected to cloud broker")
-    client.subscribe(TOPIC)
+    if rc == 0:
+        print("🟢 Edge connected to cloud broker")
+        client.subscribe(TOPIC)
+    else:
+        print(f"❌ Edge failed to connect, code {rc}")
 
 def on_message(client, userdata, msg):
     print(f"🎧 Received final audio ({len(msg.payload)} bytes)")

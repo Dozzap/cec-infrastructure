@@ -80,6 +80,58 @@ resource "aws_launch_template" "wlz_ubuntu_launch_template" {
 
 # ========================================== UBUNTU TEMPLATES [END] ==========================================
 
+
+### Cloud Launch Template
+resource "aws_launch_template" "region_launch_template" {
+  name          = "eco-region-workers"
+  image_id      = data.aws_ssm_parameter.amzn-linux-ami.value  # or adjust if using a different image
+  instance_type = var.instance_type
+  key_name      = var.key_name
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size = var.volume_size
+      encrypted   = true
+      kms_key_id  = data.aws_kms_key.current.arn
+    }
+  }
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.worker_role.arn
+  }
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_put_response_hop_limit = 1
+    http_tokens                 = "required"
+  }
+  monitoring {
+    enabled = true
+  }
+}
+
+### Cloud Worker Instances (region_workers)
+resource "aws_instance" "region_workers" {
+  count = 2
+  subnet_id                   = aws_subnet.region_subnets["az1"].id
+  # Dynamically assign userdata: index 0 runs region.sh (master), others run region1.sh (workers)
+  user_data = "${count.index == 0 ? filebase64("templates/region.sh") : filebase64("templates/region1.sh")}"
+  associate_public_ip_address = true
+  security_groups             = [aws_security_group.cloud_instance_sg.id]
+  
+  launch_template {
+    id      = aws_launch_template.region_launch_template.id
+    version = "$Latest"
+  }
+  
+  tags = {
+    Name = "ECO-REGION-INSTANCE-${count.index}"
+  }
+}
+
+
+
+### Wavelength Launch Templates
+# (For workers using a non-Ubuntu image)
 resource "aws_launch_template" "wlz_launch_template" {
   name          = "eco-wlz-workers"
   image_id      = data.aws_ssm_parameter.amzn-linux-ami.value
@@ -106,78 +158,32 @@ resource "aws_launch_template" "wlz_launch_template" {
   }
 }
 
-# Create one ASG for each WLZ subnet
+### Wavelength Worker Instances (wlz_workers)
 resource "aws_instance" "wlz_workers" {
-  count = 1
-  subnet_id = aws_subnet.wavelength_subnets_public["wlz"].id
-  security_groups = [aws_security_group.instance_sg.id]
-  user_data = "${element(["${filebase64("templates/wlz1.sh")}"], count.index)}"
-  #launch_template {
-  #  id      = aws_launch_template.wlz_launch_template.id
-  #  version = "$Latest"
-  #}
+  count = 2
+  subnet_id       = aws_subnet.wavelength_subnets_public["wlz"].id
+  security_groups = [aws_security_group.wavelength_instance_sg.id]
+  # Dynamically assign userdata: index 0 uses wlz-master script, others use wlz-worker script
+  user_data = "${count.index == 0 ? filebase64("templates/wlz.sh") : filebase64("templates/wlz1.sh")}"
+  
   launch_template {
-    id      = count.index == 2 ? aws_launch_template.wlz_ubuntu_launch_template.id : aws_launch_template.wlz_launch_template.id
+    id      = aws_launch_template.wlz_launch_template.id
     version = "$Latest"
   }
+  
   tags = {
     Name = "ECO-WLZ-INSTANCE-${count.index}"
   }
 }
+
 resource "aws_eip" "tf-wlz-cip" {
-  count = 1
+  count = 2
   network_border_group = var.wavelength_zones_public["wlz"].availability_zone
 }
 resource "aws_eip_association" "eip_assoc" {
-  count = 1
-  instance_id   = aws_instance.wlz_workers[count.index].id
+  count        = 2
+  instance_id  = aws_instance.wlz_workers[count.index].id
   allocation_id = aws_eip.tf-wlz-cip[count.index].id
 }
 
 
-######################################################################
-
-resource "aws_launch_template" "region_launch_template" {
-  name          = "eco-region-workers"
-  image_id      = data.aws_ssm_parameter.amzn-linux-ami.value
-  instance_type = var.instance_type
-  key_name      = var.key_name
-  block_device_mappings {
-    device_name = "/dev/xvda"
-    ebs {
-      volume_size = var.volume_size
-      encrypted   = true
-      kms_key_id  = data.aws_kms_key.current.arn
-    }
-  }
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.worker_role.arn
-  }
-  metadata_options {
-    http_endpoint               = "enabled"
-    http_put_response_hop_limit = 1
-    http_tokens                 = "required"
-  }
-  monitoring {
-    enabled = true
-  }
-}
-
-# Create one ASG for each region subnet
-resource "aws_instance" "region_workers" {
-  count = 2
-
-  subnet_id                   = aws_subnet.region_subnets["az1"].id
-  user_data = "${count.index == 0 ? filebase64("templates/region.sh") : filebase64("templates/region1.sh")}"
-  associate_public_ip_address = true
-  security_groups             = [aws_security_group.instance_sg.id]
-  
-  launch_template {
-    id      = aws_launch_template.region_launch_template.id
-    version = "$Latest"
-  }
-  
-  tags = {
-    Name = "ECO-REGION-INSTANCE-${count.index}"
-  }
-}
