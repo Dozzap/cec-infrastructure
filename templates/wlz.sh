@@ -23,6 +23,9 @@ sudo systemctl enable kubelet --now
 # 4. Initialize Kubernetes cluster (Wavelength Master)
 MASTER_IP=$(hostname -I | awk '{print $1}')
 CONTROL_PLANE_ENDPOINT=$(curl -s 169.254.169.254/latest/meta-data/public-ipv4)
+echo "Master IP: $MASTER_IP"
+echo "Control Plane Endpoint: $CONTROL_PLANE_ENDPOINT"
+
 sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \
   --apiserver-advertise-address="$MASTER_IP" \
@@ -34,49 +37,35 @@ mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-# 6. Install Flannel CNI (for wavelength)
+# 6. Install Flannel CNI (for cluster networking)
 kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
-# 7. Label the master node for wavelength
+# 7. Label the master node as wavelength
 kubectl label nodes "$(hostname)" node-role.kubernetes.io/control-plane="" layer=wavelength topology.kubernetes.io/zone=wlz-1 carrier.wavelength.aws/optimized=true
 
-# 8. Generate the worker join command for wavelength and save it
+# 8. Generate the worker join command and save it to a file
 JOIN_CMD=$(sudo kubeadm token create --print-join-command)
-echo "$JOIN_CMD" > /home/ec2-user/wavelength-worker-join.sh
-chmod +x /home/ec2-user/wavelength-worker-join.sh
+echo "$JOIN_CMD" | sudo tee /home/ec2-user/wavelength-worker-join.sh
+sudo chmod 600 /home/ec2-user/wavelength-worker-join.sh
 echo "Wavelength Worker join command saved to /home/ec2-user/wavelength-worker-join.sh"
 
-# 9. Install Metrics Server
+# 9. Install Metrics Server (optional)
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
-# 10. (Optional) Install Monitoring with Helm
-helm install monitoring prometheus prometheus-community/kube-prometheus-stack \
-  --namespace monitoring-cloud \
-  --create-namespace \
-  --set grafana.service.type=NodePort \
-  --set prometheus.service.type=NodePort
-
-# 11. Create the namespace and write YAML manifests
+# 10. Create the 'wavelength' namespace if not exists and deploy wavelength-specific services
 kubectl create namespace wavelength || true
+kubectl apply -f /home/ec2-user/wlz-services.yaml
 
-
-cat << EOF > /home/ec2-user/wlz-services.yaml
----
----
+cat <<EOF | sudo tee /home/ec2-user/wlz-services.yaml
 apiVersion: v1
-kind: Service
+kind: ConfigMap
 metadata:
-  name: mosquitto-service
+  name: mosquitto-config
   namespace: wavelength
-spec:
-  type: NodePort
-  selector:
-    app: mosquitto
-  ports:
-    - protocol: TCP
-      port: 1883
-      targetPort: 1883
-      nodePort: 31883
+data:
+  mosquitto.conf: |
+    listener 1883
+    allow_anonymous true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -98,7 +87,7 @@ spec:
         image: eclipse-mosquitto:latest
         ports:
         - containerPort: 1883
-          hostPort: 1883  # Ensure external accessibility on the node
+          hostPort: 1883
         volumeMounts:
         - name: config-volume
           mountPath: /mosquitto/config
@@ -106,16 +95,6 @@ spec:
       - name: config-volume
         configMap:
           name: mosquitto-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mosquitto-config
-  namespace: wavelength
-data:
-  mosquitto.conf: |
-    listener 1883
-    allow_anonymous true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -141,7 +120,7 @@ spec:
         - containerPort: 5000
         env:
         - name: MQTT_BROKER
-          value: "mosquitto-service.wavelength"
+          value: "mosquitto-lb"
         - name: MQTT_TOPIC_SUB
           value: "pipeline/tts/out"
         - name: MQTT_TOPIC_PUB
@@ -184,7 +163,7 @@ spec:
         - containerPort: 5000
         env:
         - name: MQTT_BROKER
-          value: "mosquitto-service.wavelength"
+          value: "mosquitto-lb"
         - name: MQTT_TOPIC_SUB
           value: "pipeline/conversion/out"
         - name: MQTT_TOPIC_PUB
@@ -204,11 +183,6 @@ spec:
     app: profanity
 EOF
 
-
-
-kubectl apply -f /home/ec2-user/wlz-services.yaml
-
-
-
 echo "Wavelength MASTER setup complete!"
+echo "Worker join command:"
 echo "$JOIN_CMD"

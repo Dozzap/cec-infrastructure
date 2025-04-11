@@ -1,4 +1,3 @@
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,7 +22,7 @@ spec:
         - containerPort: 5000
         env:
         - name: MQTT_BROKER
-          value: "mosquitto-service.wavelength"
+          value: "mosquitto-lb"    # Use central broker (adjust if necessary)
         - name: MQTT_TOPIC_SUB
           value: "pipeline/profanity/out"
         - name: MQTT_TOPIC_PUB
@@ -53,7 +52,7 @@ spec:
         - containerPort: 5000
         env:
         - name: MQTT_BROKER
-          value: "mosquitto-service.wavelength"
+          value: "mosquitto-lb"    # Same broker
         - name: MQTT_TOPIC_SUB
           value: "pipeline/censor/out"
         - name: MQTT_TOPIC_PUB
@@ -92,10 +91,9 @@ metadata:
   namespace: cloud
 spec:
   type: LoadBalancer
-  selector:
-    app: mosquitto
   ports:
     - protocol: TCP
       port: 1883
       targetPort: 1883
-
+  selector:
+    app: mosquitto

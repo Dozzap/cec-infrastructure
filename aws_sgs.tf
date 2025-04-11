@@ -177,6 +177,13 @@ ingress {
   protocol    = "tcp"
   cidr_blocks = ["0.0.0.0/0"]
 }
+  ingress{
+    description = "Allow Docker access for monitoring"
+    from_port =  2375
+    to_port = 2375
+    protocol    = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]
+  }
 
 
   tags = {
@@ -247,7 +254,13 @@ ingress {
   protocol    = "tcp"
   cidr_blocks = ["0.0.0.0/0"]
 }
-
+  ingress{
+    description =  "Allow Docker access for monitoring"
+    from_port = 2375
+    to_port = 2375
+    protocol    = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]
+  }
 
   tags = {
     Name = "cloud-instance-sg"

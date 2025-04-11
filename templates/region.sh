@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 echo "Setting up CLOUD MASTER (region.sh)..."
 
 # 1. Update packages and install dependencies
@@ -24,6 +23,9 @@ sudo systemctl enable kubelet --now
 # 4. Initialize Kubernetes cluster (Cloud Master)
 MASTER_IP=$(hostname -I | awk '{print $1}')
 CONTROL_PLANE_ENDPOINT=$(curl -s 169.254.169.254/latest/meta-data/public-ipv4)
+echo "Master IP: $MASTER_IP"
+echo "Control Plane Endpoint: $CONTROL_PLANE_ENDPOINT"
+
 sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \
   --apiserver-advertise-address="$MASTER_IP" \
@@ -36,7 +38,7 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG=$HOME/.kube/config
 
-# 6. Install Flannel CNI
+# 6. Install a pod network (Flannel)
 kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
 # 7. Label this master node as part of the cloud layer
@@ -44,19 +46,15 @@ kubectl label nodes "$(hostname)" node-role.kubernetes.io/control-plane="" layer
 
 # 8. Generate the worker join command and save it
 JOIN_CMD=$(sudo kubeadm token create --print-join-command)
-echo "$JOIN_CMD" > /home/ec2-user/worker-join-command.txt
-chmod 600 /home/ec2-user/worker-join-command.txt
+echo "$JOIN_CMD" | sudo tee /home/ec2-user/worker-join-command.txt
+sudo chmod 600 /home/ec2-user/worker-join-command.txt
 echo "Worker join command saved to /home/ec2-user/worker-join-command.txt"
 
-
-# 9. Install Metrics Server
+# 9. (Optional) Install Metrics Server
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
-kubectl create namespace cloud || true
-
-# 10. Create the 'cloud' namespace and deploy additional cloud services (e.g. censor, compression)
-cat <<EOF > /home/ec2-user/cloud-services.yaml
----
+# 10. Deploy Cloud Services for Censor & Compression
+cat <<EOF | sudo tee /home/ec2-user/cloud-services.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -81,7 +79,7 @@ spec:
         - containerPort: 5000
         env:
         - name: MQTT_BROKER
-          value: "mosquitto-service.wavelength"
+          value: "mosquitto-lb"    # Use central broker (adjust if necessary)
         - name: MQTT_TOPIC_SUB
           value: "pipeline/profanity/out"
         - name: MQTT_TOPIC_PUB
@@ -111,7 +109,7 @@ spec:
         - containerPort: 5000
         env:
         - name: MQTT_BROKER
-          value: "mosquitto-service.wavelength"
+          value: "mosquitto-lb"    # Same broker
         - name: MQTT_TOPIC_SUB
           value: "pipeline/censor/out"
         - name: MQTT_TOPIC_PUB
@@ -142,16 +140,26 @@ spec:
     targetPort: 5000
   selector:
     app: compression
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-lb
+  namespace: cloud
+spec:
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 1883
+      targetPort: 1883
+  selector:
+    app: mosquitto
+
 EOF
 
-
+kubectl create namespace cloud || true
 kubectl apply -f /home/ec2-user/cloud-services.yaml
 
-
-
 echo "Cloud MASTER setup complete!"
-
-
-
-
+echo "Worker join command:"
 echo "$JOIN_CMD"
